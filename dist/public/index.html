@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Allow zoom for accessibility -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PurpleBeats - Music Streaming</title>
+
+    <!-- Theme color & favicon -->
+    <meta name="theme-color" content="#6c5ce7" />
+    <link rel="icon" href="/favicon.ico" />
+
+    <!-- Pi SDK -->
+    <script src="https://sdk.minepi.com/pi-sdk.js" defer></script>
+
+    <script>
+      // Run after the SDK script has had a chance to load
+      (function () {
+        const currentDomain = window.location.hostname;
+        const currentOrigin = window.location.origin;
+
+        console.log("🌐 Current domain:", currentDomain);
+        console.log("🔄 Fetching Pi config from /api/pi-config...");
+
+        function safeInitPi(appId) {
+          if (!window.Pi) {
+            console.error("❌ Pi SDK not available on window. Check network / CSP.");
+            return;
+          }
+          try {
+            Pi.init({
+              version: "2.0",
+              sandbox: false, // mainnet
+              appId,
+              allowedOrigins: [
+                currentOrigin,
+                `https://${currentDomain}`,
+                // Uncomment during local dev:
+                // "http://localhost:3000",
+                // "http://127.0.0.1:5173"
+              ],
+            });
+            console.log("✅ Pi.init succeeded with APP_ID:", appId);
+          } catch (e) {
+            console.error("❌ Pi.init threw an error:", e);
+          }
+        }
+
+        fetch("/api/pi-config")
+          .then((res) => {
+            console.log("📡 Pi config status:", res.status, "ok:", res.ok);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
+          .then((config) => {
+            const appId = config && config.appId;
+            console.log("🔧 Pi Config received:", config);
+            if (!appId || typeof appId !== "string") {
+              throw new Error("Missing or invalid appId in /api/pi-config response");
+            }
+            safeInitPi(appId);
+          })
+          .catch((err) => {
+            console.error("❌ Failed to initialize Pi:", err);
+          });
+      })();
+    </script>
+
+    <!-- Keep font payload lean: import only what you really use -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Example: just DM Sans and Geist -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,700&family=Geist:wght@400;700&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="/assets/index-D_T9vKO_.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DJqWFSGb.css">
+  </head>
+  <body>
+    <noscript>
+      <p style="padding:1rem; background:#fff3cd; color:#664d03;">
+        JavaScript is required for PurpleBeats. Please enable it to continue.
+      </p>
+    </noscript>
+
+    <div id="root"></div>
+
+    <!-- Your app entry (module scripts automatically defer) -->
+
+    <!-- Replit dev banner (optional in production) -->
+    <script src="https://replit.com/public/js/replit-dev-banner.js" defer></script>
+  </body>
+</html>
