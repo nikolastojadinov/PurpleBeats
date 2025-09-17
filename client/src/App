@@ -1,0 +1,69 @@
+import { Switch, Route } from "wouter";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/auth-context";
+import { MusicPlayerProvider } from "@/contexts/music-player-context";
+import NotFound from "@/pages/not-found";
+import Home from "@/pages/home";
+import Search from "@/pages/search";
+import Library from "@/pages/library";
+import Premium from "@/pages/premium";
+import PlaylistPage from "@/pages/playlist";
+import ProfilePage from "@/pages/profile";
+import EditProfilePage from "@/pages/edit-profile";
+import Landing from "@/pages/landing";
+import LikedSongs from "@/pages/liked-songs";
+import Category from "@/pages/category";
+import AdminPage from "@/pages/admin";
+import BottomNavigation from "@/components/layout/bottom-navigation";
+import NowPlayingBar from "@/components/music/now-playing-bar";
+
+function Router() {
+  return (
+    <div className="max-w-md mx-auto bg-background min-h-screen relative pb-40">
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/search" component={Search} />
+        <Route path="/library" component={Library} />
+        <Route path="/liked-songs" component={LikedSongs} />
+        <Route path="/premium" component={Premium} />
+        <Route path="/playlist/:id" component={PlaylistPage} />
+        <Route path="/category/:genre" component={Category} />
+        <Route path="/profile" component={ProfilePage} />
+        <Route path="/edit-profile" component={EditProfilePage} />
+        <Route path="/admin" component={AdminPage} />
+        <Route path="/landing" component={Landing} />
+        <Route component={NotFound} />
+      </Switch>
+      
+      <NowPlayingBar />
+      <BottomNavigation />
+      
+      {/* Legal Notice - higher up from bottom */}
+      <div className="absolute bottom-16 left-0 right-0 px-4 py-2 text-center">
+        <p className="text-xs text-muted-foreground">
+          <a href="/legal" className="text-primary hover:underline">Legal Notice</a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AuthProvider>
+          <MusicPlayerProvider>
+            <Toaster />
+            <Router />
+          </MusicPlayerProvider>
+        </AuthProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
