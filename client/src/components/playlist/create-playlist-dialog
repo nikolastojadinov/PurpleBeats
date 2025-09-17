@@ -1,0 +1,292 @@
+import { useState } from "react";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/auth-context";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Crown, ImagePlus } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertPlaylistSchema, type Membership } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
+import { ObjectUploader } from "@/components/object-uploader";
+
+const createPlaylistFormSchema = insertPlaylistSchema.extend({
+  name: z.string().min(1, "Playlist name is required").max(100, "Name too long"),
+  description: z.string().max(500, "Description too long").optional(),
+  imageUrl: z.string().optional(),
+});
+
+type CreatePlaylistFormData = z.infer<typeof createPlaylistFormSchema>;
+
+interface CreatePlaylistDialogProps {
+  trigger?: React.ReactNode;
+}
+
+export default function CreatePlaylistDialog({ trigger }: CreatePlaylistDialogProps) {
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { userId } = useAuth();
+
+  // Check user's membership status
+  const { data: membership } = useQuery<Membership>({
+    queryKey: ['/api/membership', userId],
+    enabled: !!userId,
+  });
+
+  const isPremium = membership?.isPremium && membership.expiresAt && new Date(membership.expiresAt) > new Date();
+
+  const form = useForm<CreatePlaylistFormData>({
+    resolver: zodResolver(createPlaylistFormSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      imageUrl: "",
+      isPublic: true,
+      createdBy: userId || "",
+    },
+  });
+
+  const createPlaylistMutation = useMutation({
+    mutationFn: async (data: CreatePlaylistFormData) => {
+      return await apiRequest("POST", "/api/playlists", data);
+    },
+    onSuccess: async (playlist) => {
+      // Clear ALL cache
+      queryClient.clear();
+      
+      toast({
+        title: "Playlist Created", 
+        description: "Playlist has been created successfully.",
+      });
+      
+      // Reset form and close dialog
+      form.reset();
+      setOpen(false);
+      
+      // Force page reload after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to create playlist. Please try again.",
+        variant: "destructive",
+      });
+      console.error("Failed to create playlist:", error);
+    },
+  });
+
+  const onSubmit = (data: CreatePlaylistFormData) => {
+    createPlaylistMutation.mutate(data);
+  };
+
+  const handleImageUpload = (uploadURL: string) => {
+    // Convert upload URL to object path
+    const objectPath = uploadURL.replace('https://storage.googleapis.com/', '/objects/');
+    form.setValue('imageUrl', objectPath);
+    toast({
+      title: "Image Uploaded",
+      description: "Playlist image has been uploaded successfully.",
+    });
+  };
+
+  const defaultTrigger = (
+    <Button variant="ghost" size="sm" className="text-primary">
+      <Plus className="h-5 w-5 mr-2" />
+      New Playlist
+    </Button>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild data-testid="button-create-playlist">
+        {trigger || defaultTrigger}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        {!isPremium ? (
+          // Premium Required Dialog
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-primary" />
+                Premium Feature
+              </DialogTitle>
+              <DialogDescription>
+                Creating custom playlists is a premium feature.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="text-center p-6 bg-gradient-to-br from-primary/10 to-accent/10 rounded-lg">
+                <Crown className="h-12 w-12 text-primary mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Upgrade to Premium</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Get access to unlimited playlist creation, premium audio controls, and more exclusive features.
+                </p>
+                <p className="text-lg font-bold text-primary">
+                  Only 3.14π
+                </p>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setOpen(false)}
+                  data-testid="button-cancel-premium"
+                >
+                  Maybe Later
+                </Button>
+                <Button 
+                  className="bg-gradient-to-r from-primary to-accent text-white"
+                  onClick={() => {
+                    setOpen(false);
+                    // TODO: Navigate to premium payment page
+                  }}
+                  data-testid="button-upgrade-premium"
+                >
+                  Upgrade Now
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          // Regular Create Playlist Dialog for Premium Users
+          <>
+            <DialogHeader>
+              <DialogTitle>Create New Playlist</DialogTitle>
+              <DialogDescription>
+                Create a new playlist to organize your favorite songs.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Playlist Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="My Awesome Playlist" 
+                          {...field} 
+                          data-testid="input-playlist-name"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                {/* Image Upload Field */}
+                <div className="space-y-2">
+                  <FormLabel>Playlist Picture (optional)</FormLabel>
+                  <div className="flex items-center space-x-4">
+                    {form.watch('imageUrl') && (
+                      <div className="w-20 h-20 bg-muted rounded-lg flex items-center justify-center overflow-hidden">
+                        <img 
+                          src={form.watch('imageUrl')} 
+                          alt="Playlist cover" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <ObjectUploader
+                      onComplete={handleImageUpload}
+                      maxFileSize={5242880} // 5MB
+                      buttonClassName="flex items-center gap-2"
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                      {form.watch('imageUrl') ? 'Change Picture' : 'Add Picture'}
+                    </ObjectUploader>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Upload a cover image for your playlist (max 5MB)
+                  </p>
+                </div>
+                
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Describe your playlist..." 
+                          rows={3}
+                          {...field} 
+                          data-testid="input-playlist-description"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="isPublic"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                      <div className="space-y-0.5">
+                        <FormLabel>Public Playlist</FormLabel>
+                        <div className="text-[0.8rem] text-muted-foreground">
+                          Make this playlist visible to other users
+                        </div>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value || false}
+                          onCheckedChange={field.onChange}
+                          data-testid="switch-playlist-public"
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setOpen(false)}
+                    data-testid="button-cancel-playlist"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={createPlaylistMutation.isPending}
+                    data-testid="button-submit-playlist"
+                  >
+                    {createPlaylistMutation.isPending ? "Creating..." : "Create Playlist"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
