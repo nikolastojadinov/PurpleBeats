@@ -1,0 +1,380 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Crown, Sparkles, Music, Clock } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
+
+declare global {
+  interface Window {
+    Pi: {
+      init: (config: { version: string; sandbox: boolean }) => void;
+      authenticate: (scopes: string[], onIncompletePaymentFound: (payment: any) => void) => Promise<{ accessToken: string; user: any }>;
+      createPayment: (paymentData: any, callbacks: any) => Promise<any>;
+    };
+  }
+}
+
+interface PiPaymentProps {
+  userId: string;
+  onPaymentSuccess?: () => void;
+}
+
+export default function PiPayment({ userId, onPaymentSuccess }: PiPaymentProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [piSdkReady, setPiSdkReady] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    // Component loaded successfully
+    
+    // Check if Pi SDK is available
+    const checkPiSdk = () => {
+      if (typeof window !== 'undefined' && window.Pi) {
+        setPiSdkReady(true);
+        console.log('Pi SDK is ready');
+        
+        // Check if we're in Pi Browser
+        const userAgent = navigator.userAgent || '';
+        const isPiBrowser = userAgent.includes('PiBrowser') || userAgent.includes('Pi Network');
+        console.log('User Agent:', userAgent);
+        console.log('Is Pi Browser:', isPiBrowser);
+        
+        if (!isPiBrowser) {
+          console.warn('Not running in Pi Browser - authentication may not work properly');
+        }
+        
+        // Don't auto-authenticate - let user click the button
+        console.log('Pi Browser detected, ready for authentication');
+      } else {
+        console.log('Pi SDK not available, retrying...');
+        setTimeout(checkPiSdk, 500);
+      }
+    };
+    
+    checkPiSdk();
+  }, []);
+
+  const authenticateUser = async () => {
+    if (!piSdkReady) {
+      toast({
+        title: "Pi SDK Loading",
+        description: "Please wait for Pi SDK to initialize.",
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log('Starting Pi authentication...');
+      
+      // Set a timeout for authentication (increased for testnet)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Authentication timeout')), 90000);
+      });
+
+      const scopes = ['payments'];
+      
+      const authPromise = window.Pi.authenticate(scopes, (payment) => {
+        console.log('Incomplete payment found:', payment);
+        // Handle incomplete payment if needed
+      });
+
+      const auth = await Promise.race([authPromise, timeoutPromise]) as { accessToken: string; user: any };
+      
+      console.log('Authentication successful:', auth);
+      setAuthToken(auth.accessToken);
+      setIsAuthenticated(true);
+      
+      toast({
+        title: "Authenticated!",
+        description: "You can now purchase premium membership with Pi.",
+      });
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      
+      // Reset state on error
+      setIsAuthenticated(false);
+      setAuthToken(null);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      if (errorMessage.includes('timeout')) {
+        toast({
+          title: "Connection Timeout",
+          description: "Pi Wallet connection timed out. Please try again.",
+          variant: "destructive",
+        });
+      } else if (errorMessage.includes('cancelled') || errorMessage.includes('denied')) {
+        toast({
+          title: "Authentication Cancelled",
+          description: "Please allow access to connect your Pi Wallet.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Authentication Failed",
+          description: `Error: ${errorMessage}`,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePiPayment = async () => {
+    console.log('🚀 Pi payment initiated - isAuthenticated:', isAuthenticated, 'authToken:', !!authToken);
+    
+    if (!isAuthenticated || !authToken) {
+      console.log('🔒 Not authenticated, starting authentication...');
+      await authenticateUser();
+      return;
+    }
+
+    try {
+      console.log('💳 Starting payment process...');
+      setIsLoading(true);
+
+      const paymentData = {
+        amount: 3.14,
+        memo: "PurpleBeats Premium Membership - 1 Month",
+        metadata: { 
+          productId: "premium_membership",
+          userId: userId,
+          duration: "1_month"
+        }
+      };
+
+      const paymentCallbacks = {
+        onReadyForServerApproval: async (paymentId: string) => {
+          console.log('Payment ready for approval:', paymentId);
+          
+          toast({
+            title: "🎯 Approval Callback Pozvan!",
+            description: `PaymentID: ${paymentId}`,
+          });
+          
+          try {
+            // Create payment record in our backend
+            const baseUrl = window.location.origin;
+            const response = await fetch(`${baseUrl}/api/pi/payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                paymentId,
+                userId,
+                amount: "3.14",
+                status: "created",
+                metadata: JSON.stringify(paymentData.metadata)
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Failed to create payment record:', errorText);
+              throw new Error('Failed to create payment record');
+            }
+
+            console.log('Payment record created, attempting approval...');
+
+            // Approve payment
+            const approveResponse = await fetch(`${baseUrl}/api/pi/payment/${paymentId}/approve`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!approveResponse.ok) {
+              const errorText = await approveResponse.text();
+              console.error('Failed to approve payment:', errorText);
+              throw new Error('Failed to approve payment');
+            }
+
+            const approveData = await approveResponse.json();
+            console.log('Payment approval successful:', approveData);
+
+            toast({
+              title: "Payment Approved",
+              description: "Please complete the transaction in Pi Wallet.",
+            });
+          } catch (error) {
+            console.error('Payment approval failed:', error);
+            toast({
+              title: "Payment Approval Failed",
+              description: "Please try again or contact support.",
+              variant: "destructive"
+            });
+            throw error;
+          }
+        },
+        
+        onReadyForServerCompletion: async (paymentId: string, txid: string) => {
+          console.log('Payment ready for completion:', paymentId, txid);
+          
+          try {
+            const response = await fetch(`${window.location.origin}/api/pi/payment/${paymentId}/complete`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ txid })
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to complete payment');
+            }
+
+            // Invalidate queries to refresh membership status
+            queryClient.invalidateQueries({ queryKey: ['/api/membership'] });
+            
+            toast({
+              title: "Payment Successful! 🎉",
+              description: "Welcome to PurpleBeats Premium! Your membership is now active.",
+            });
+
+            if (onPaymentSuccess) {
+              onPaymentSuccess();
+            }
+          } catch (error) {
+            console.error('Failed to complete payment:', error);
+            toast({
+              title: "Payment Error",
+              description: "Transaction completed but failed to activate membership. Please contact support.",
+              variant: "destructive",
+            });
+          }
+        },
+        
+        onCancel: (paymentId: string) => {
+          console.log('Payment cancelled:', paymentId);
+          toast({
+            title: "Payment Cancelled",
+            description: "You can try again anytime.",
+          });
+        },
+        
+        onError: (error: any, payment: any) => {
+          console.error('Payment error:', error, payment);
+          toast({
+            title: "Payment Error",
+            description: "Something went wrong. Please try again.",
+            variant: "destructive",
+          });
+        }
+      };
+
+      toast({
+        title: "Kreiranje Pi Payment-a...",
+        description: "Pozivam Pi Network za payment od 3.14π",
+      });
+      
+      const result = await window.Pi.createPayment(paymentData, paymentCallbacks);
+      
+      toast({
+        title: "Pi Payment Kreiran ✅",
+        description: "Čekam Pi Network da pozove approval callback",
+      });
+    } catch (error) {
+      console.error('Payment failed:', error);
+      toast({
+        title: "Payment Failed",
+        description: "Unable to process payment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card className="bg-gradient-to-br from-primary/10 to-accent/10 border-primary/20">
+      <CardHeader className="text-center">
+        <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-4">
+          <Crown className="h-8 w-8 text-white" />
+        </div>
+        <CardTitle className="text-2xl flex items-center justify-center gap-2">
+          <Sparkles className="h-5 w-5 text-accent" />
+          PurpleBeats Premium
+          <Sparkles className="h-5 w-5 text-accent" />
+        </CardTitle>
+        <CardDescription className="text-lg">
+          Unlock the full music experience for just{" "}
+          <Badge variant="secondary" className="text-accent font-bold">
+            3.14π
+          </Badge>
+        </CardDescription>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        <div className="grid grid-cols-1 gap-4">
+          <div className="flex items-center space-x-3 p-3 bg-background/50 rounded-lg">
+            <Music className="h-5 w-5 text-primary" />
+            <span>Unlimited music streaming</span>
+          </div>
+          <div className="flex items-center space-x-3 p-3 bg-background/50 rounded-lg">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <span>Ad-free experience</span>
+          </div>
+          <div className="flex items-center space-x-3 p-3 bg-background/50 rounded-lg">
+            <Crown className="h-5 w-5 text-primary" />
+            <span>Premium exclusive content</span>
+          </div>
+          <div className="flex items-center space-x-3 p-3 bg-background/50 rounded-lg">
+            <Clock className="h-5 w-5 text-primary" />
+            <span>1 month premium access</span>
+          </div>
+        </div>
+
+        <div className="text-center space-y-4">
+          {!isAuthenticated ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Connect your Pi Wallet to get started
+              </p>
+              <Button 
+                onClick={authenticateUser} 
+                disabled={isLoading || !piSdkReady}
+                className="w-full music-gradient text-white font-semibold"
+                data-testid="button-authenticate-pi"
+              >
+                {!piSdkReady ? "Loading Pi SDK..." : isLoading ? "Connecting..." : "Connect Pi Wallet"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-accent font-medium">
+                ✓ Pi Wallet Connected
+              </p>
+              <Button 
+                onClick={handlePiPayment} 
+                disabled={isLoading}
+                className="w-full music-gradient text-white font-semibold"
+                data-testid="button-pay-with-pi"
+              >
+                {isLoading ? "Processing..." : "Pay 3.14π for Premium"}
+              </Button>
+            </div>
+          )}
+          
+          <p className="text-xs text-muted-foreground">
+            Secure payment powered by Pi Network
+          </p>
+          
+          {!navigator.userAgent.includes('PiBrowser') && (
+            <div className="mt-4 space-y-3">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                  <strong>Note:</strong> Pi Wallet authentication requires the Pi Browser app. 
+                  <br />
+                  Download the Pi Network app to complete payments.
+                </p>
+              </div>
+              
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
