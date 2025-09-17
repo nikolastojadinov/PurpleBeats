@@ -1,0 +1,283 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  User, 
+  Settings, 
+  Bell, 
+  Clock, 
+  Newspaper, 
+  Shield, 
+  LogOut,
+  ChevronDown,
+  Trash2,
+  Crown
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/auth-context";
+
+interface ProfileDropdownProps {
+  userName?: string;
+  userAvatar?: string;
+  isPremium?: boolean;
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  imageUrl?: string;
+  nickname?: string;
+}
+
+export default function ProfileDropdown({ userName, userAvatar, isPremium }: ProfileDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [, setLocation] = useLocation();
+  const { clearGuestProfile, user, isAuthenticated, login } = useAuth();
+  const userId = user?.uid;
+  
+  // Check if current user is a guest user (not authenticated with Pi Network)
+  const isGuestUser = !isAuthenticated && !!user && user.uid?.startsWith('guest-');
+
+  const { toast } = useToast();
+
+  // Fetch user profile with forced refresh
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ['/api/profile', userId],
+    enabled: isAuthenticated,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+  });
+
+  // Use Pi Network authenticated user name or profile name or guest fallback
+  const displayName = user?.username || userProfile?.name || userName || "Guest";
+  
+  // Image URL is now set correctly with relative path
+
+  const handleProfileClick = () => {
+    setLocation("/profile");
+    setIsOpen(false);
+  };
+
+  const handleAccountClick = () => {
+    console.log("Account clicked");
+    setIsOpen(false);
+  };
+
+  const handleNotificationsClick = () => {
+    console.log("Notifications clicked");
+    setIsOpen(false);
+  };
+
+  const handleRecentlyPlayedClick = () => {
+    console.log("Recently played clicked");
+    setIsOpen(false);
+  };
+
+  const handleNewsClick = () => {
+    console.log("News & Updates clicked");
+    setIsOpen(false);
+  };
+
+  const handleSettingsClick = () => {
+    console.log("Settings & Privacy clicked");
+    setIsOpen(false);
+  };
+
+  const handlePremiumClick = () => {
+    setLocation("/premium");
+    setIsOpen(false);
+  };
+
+  const handleLogoutClick = () => {
+    // Za guest korisnike, logout je isti kao reset profila
+    if (isGuestUser) {
+      clearGuestProfile();
+      toast({
+        title: "Logged Out",
+        description: "You have been logged out successfully.",
+      });
+    } else {
+      // Za Pi korisnike, poziv pravog logout
+      // logout(); // Ovo će biti implementirano kada bude potrebno
+      console.log("Pi user logout clicked");
+    }
+    setIsOpen(false);
+  };
+
+  const handleClearProfileClick = () => {
+    // Briše dugotrajni guest profil - korisno ako žele da počnu iznova
+    clearGuestProfile();
+    setIsOpen(false);
+    
+    // Prikaži toast potvrdu
+    toast({
+      title: "Profile Reset",
+      description: "Your guest profile has been reset. You can start fresh!",
+    });
+  };
+
+  // isGuestUser is already defined above
+
+  // Get user initials for avatar fallback
+  const userInitials = displayName
+    .split(' ')
+    .map(name => name.charAt(0).toUpperCase())
+    .join('')
+    .slice(0, 2);
+
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="ghost" 
+          className="flex items-center space-x-2 p-2 hover:bg-accent/10 rounded-full"
+          data-testid="button-profile-dropdown"
+        >
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={userProfile?.imageUrl || userAvatar} alt={displayName} />
+            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+              {userInitials}
+            </AvatarFallback>
+          </Avatar>
+          <span className="text-sm font-medium text-foreground hidden sm:block max-w-20 truncate">
+            {displayName}
+          </span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      
+      <DropdownMenuContent 
+        align="end" 
+        className="w-64 bg-card border border-border shadow-lg"
+        data-testid="dropdown-profile-menu"
+      >
+        {/* User Info Header */}
+        <DropdownMenuLabel className="p-4">
+          <div className="flex items-center space-x-3">
+            <Avatar className="w-12 h-12">
+              <AvatarImage src={userProfile?.imageUrl || userAvatar} alt={displayName} />
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                {userInitials}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <div className="font-semibold text-foreground">{displayName}</div>
+              <div className="text-sm text-muted-foreground">
+                {isAuthenticated ? (isPremium ? 'Premium Member' : 'Pi Network User') : 'Guest User'}
+              </div>
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        
+        <DropdownMenuSeparator />
+        
+        {/* Menu Items */}
+        <DropdownMenuItem 
+          onClick={handleProfileClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-profile"
+        >
+          <User className="h-4 w-4" />
+          <span>Profile view</span>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem 
+          onClick={handleAccountClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-account"
+        >
+          <Settings className="h-4 w-4" />
+          <span>Account</span>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem 
+          onClick={handleNotificationsClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-notifications"
+        >
+          <Bell className="h-4 w-4" />
+          <span>Notifications</span>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem 
+          onClick={handleRecentlyPlayedClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-recently-played"
+        >
+          <Clock className="h-4 w-4" />
+          <span>Recently played</span>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem 
+          onClick={handleNewsClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-news"
+        >
+          <Newspaper className="h-4 w-4" />
+          <span>News & Updates</span>
+        </DropdownMenuItem>
+        
+        <DropdownMenuItem 
+          onClick={handleSettingsClick}
+          className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10"
+          data-testid="menu-item-settings"
+        >
+          <Shield className="h-4 w-4" />
+          <span>Settings & Privacy</span>
+        </DropdownMenuItem>
+        
+
+        {/* Premium Option - show upgrade if not premium, or premium status if premium */}
+        <DropdownMenuItem 
+          onClick={handlePremiumClick}
+          className={`flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10 ${
+            isPremium ? 'text-yellow-500' : 'text-primary'
+          }`}
+          data-testid="menu-item-premium"
+        >
+          <Crown className="h-4 w-4" />
+          <span>{isPremium ? 'Premium Active' : 'Go Premium'}</span>
+          {isPremium && <span className="ml-auto text-xs text-yellow-500">✨</span>}
+        </DropdownMenuItem>
+        
+        {/* Pi Network Login - samo za guest usere */}
+        {!isAuthenticated && isGuestUser && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={async () => {
+                console.log("🚀 Pi Login button clicked!");
+                console.log("🔍 Pi SDK status:", !!window.Pi);
+                console.log("🔍 Pi.authenticate status:", !!(window.Pi?.authenticate));
+                try {
+                  await login();
+                } catch (err: any) {
+                  console.error("❌ Login clicked error:", err);
+                  alert(`Login error: ${err?.message || 'Unknown error'}`);
+                }
+              }}
+              className="flex items-center space-x-3 p-3 cursor-pointer hover:bg-accent/10 text-primary"
+              data-testid="menu-item-pi-login"
+            >
+              <Crown className="h-4 w-4" />
+              <span>Login with Pi Network</span>
+            </DropdownMenuItem>
+          </>
+        )}
+        
+        <DropdownMenuSeparator />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
