@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Allow zoom for accessibility -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PurpleBeats - Music Streaming</title>
+
+    <!-- Theme color & favicon -->
+    <meta name="theme-color" content="#6c5ce7" />
+    <link rel="icon" href="/favicon.ico" />
+
+    <!-- Content Security Policy to allow Pi SDK -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://sdk.minepi.com https://replit.com https://fonts.googleapis.com; connect-src 'self' https://api.minepi.com https://sdk.minepi.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:">
+    
+    <!-- Pi SDK -->
+    <script src="https://sdk.minepi.com/pi-sdk.js" defer></script>
+
+    <script>
+      // Enhanced Pi SDK initialization for mainnet compliance
+      (function () {
+        const currentDomain = window.location.hostname;
+        const currentOrigin = window.location.origin;
+        
+        console.log("🌐 Current domain:", currentDomain);
+        console.log("🔄 Fetching Pi config from /api/pi-config...");
+
+        // Wait for Pi SDK to be available with improved detection
+        function waitForPiSDK(callback, maxAttempts = 50) {
+          let attempts = 0;
+          
+          function checkPi() {
+            attempts++;
+            
+            if (typeof window.Pi !== 'undefined' && window.Pi && typeof window.Pi.init === 'function') {
+              console.log("✅ Pi SDK detected and ready after", attempts, "attempts");
+              callback();
+              return;
+            }
+            
+            if (attempts >= maxAttempts) {
+              console.error("❌ Pi SDK failed to load after", maxAttempts, "attempts");
+              console.error("❌ This app requires Pi Network SDK to function properly");
+              return;
+            }
+            
+            console.log("⏳ Waiting for Pi SDK... attempt", attempts);
+            setTimeout(checkPi, 200);
+          }
+          
+          checkPi();
+        }
+
+        function safeInitPi(appId) {
+          try {
+            // Determine environment - use sandbox mode for development
+            const isLocalhost = currentDomain.includes('localhost') || currentDomain.includes('127.0.0.1');
+            const isProduction = false; // Force sandbox mode for now until ready for mainnet
+            
+            const piConfig = {
+              version: "2.0",
+              sandbox: true, // Always use sandbox for development
+              appId: appId
+            };
+            
+            console.log("🔧 Initializing Pi SDK with config:", piConfig);
+            
+            window.Pi.init(piConfig);
+            
+            // Mark as initialized for the frontend
+            window.Pi.initialized = true;
+            
+            console.log("✅ Pi SDK initialized successfully for", isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
+            console.log("🎯 Pi SDK ready for authentication");
+            
+          } catch (e) {
+            console.error("❌ Pi.init threw an error:", e);
+            console.error("❌ Error details:", e.message, e.stack);
+          }
+        }
+
+        // Fetch config and initialize
+        fetch("/api/pi-config")
+          .then((res) => {
+            console.log("📡 Pi config status:", res.status, "ok:", res.ok);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          })
+          .then((config) => {
+            const appId = config && config.appId;
+            console.log("🔧 Pi Config received:", config);
+            
+            if (!appId || typeof appId !== "string") {
+              throw new Error("Missing or invalid appId in /api/pi-config response");
+            }
+            
+            // Wait for Pi SDK then initialize
+            waitForPiSDK(() => {
+              safeInitPi(appId);
+            });
+          })
+          .catch((err) => {
+            console.error("❌ Failed to fetch Pi config:", err);
+          });
+      })();
+    </script>
+
+    <!-- Keep font payload lean: import only what you really use -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Example: just DM Sans and Geist -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,700&family=Geist:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <noscript>
+      <p style="padding:1rem; background:#fff3cd; color:#664d03;">
+        JavaScript is required for PurpleBeats. Please enable it to continue.
+      </p>
+    </noscript>
+
+    <div id="root"></div>
+
+    <!-- Your app entry (module scripts automatically defer) -->
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Replit dev banner (optional in production) -->
+    <script src="https://replit.com/public/js/replit-dev-banner.js" defer></script>
+  </body>
+</html>
