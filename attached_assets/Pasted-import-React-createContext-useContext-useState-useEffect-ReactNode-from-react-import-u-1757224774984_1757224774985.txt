@@ -1,0 +1,138 @@
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { advancedPiStorage } from "@/lib/advanced-storage";
+import { initPiSDK, authenticate } from "@/lib/piAuth";
+
+interface AuthUser {
+  uid: string;
+  username: string;
+  isGuest?: boolean;
+}
+
+interface AuthContextType {
+  user: AuthUser | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+  clearGuestProfile: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const [guestUser, setGuestUser] = useState<AuthUser | null>(null);
+
+  // Backend session
+  const { data: sessionUser, isLoading: sessionLoading } = useQuery({
+    queryKey: ["/api/me"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Pi login mutation
+  const loginMutation = useMutation({
+    mutationFn: async ({ accessToken, user }: { accessToken: string; user: any }) => {
+      const response = await apiRequest("POST", "/api/auth/pi-login", { accessToken, user });
+      return response.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/me"] }),
+  });
+
+  // Pi logout mutation
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/auth/logout");
+      return response.json();
+    },
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      setGuestUser(null);
+      await advancedPiStorage.clearAllPiData();
+    },
+  });
+
+  // Init Pi SDK on mount
+  useEffect(() => {
+    initPiSDK(true).then(() => console.log("✅ Pi SDK ready"));
+  }, []);
+
+  // Guest user fallback
+  useEffect(() => {
+    if (!sessionLoading && !sessionUser) {
+      const setupGuest = async () => {
+        try {
+          // Try to restore guest from storage
+          const recovered = await advancedPiStorage.findAnyPiUser();
+          if (recovered) {
+            setGuestUser({ ...recovered, isGuest: true });
+            return;
+          }
+
+          // If no guest found, create new
+          const guestId = `guest-${Math.random().toString(36).slice(2)}-${Date.now()}`;
+          const newGuest: AuthUser = { uid: guestId, username: "Guest User", isGuest: true };
+
+          setGuestUser(newGuest);
+          await advancedPiStorage.savePiUser(newGuest);
+        } catch (err) {
+          console.warn("⚠️ Guest fallback failed:", err);
+          setGuestUser({ uid: `guest-${Date.now()}`, username: "Guest User", isGuest: true });
+        }
+      };
+
+      setupGuest();
+    }
+  }, [sessionUser, sessionLoading]);
+
+  // Pi login flow
+  const login = async () => {
+    try {
+      const authResult = await authenticate(["username", "payments"]);
+      await loginMutation.mutateAsync(authResult);
+
+      // Save to local storage
+      await advancedPiStorage.savePiUser(authResult.user);
+      setGuestUser(null); // clear guest if exists
+    } catch (err) {
+      console.error("❌ Login error:", err);
+    }
+  };
+
+  const logout = async () => {
+    await logoutMutation.mutateAsync();
+  };
+
+  const clearGuestProfile = async () => {
+    setGuestUser(null);
+    await advancedPiStorage.clearAllPiData();
+  };
+
+  // Who is the current user?
+  const currentUser = (sessionUser as AuthUser) || guestUser;
+  const isAuthenticated = !!sessionUser;
+  const isLoading = sessionLoading || loginMutation.isPending || logoutMutation.isPending;
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user: currentUser,
+        isAuthenticated,
+        isLoading,
+        login,
+        logout,
+        clearGuestProfile,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
