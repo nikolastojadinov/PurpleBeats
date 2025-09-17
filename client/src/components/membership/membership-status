@@ -1,0 +1,93 @@
+import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Crown, Calendar, CheckCircle } from "lucide-react";
+import { type Membership } from "@shared/schema";
+
+interface MembershipStatusProps {
+  userId: string;
+}
+
+export default function MembershipStatus({ userId }: MembershipStatusProps) {
+  const { data: membership, isLoading } = useQuery<Membership>({
+    queryKey: ['/api/membership', userId],
+    enabled: !!userId,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="bg-muted/20">
+        <CardContent className="p-4">
+          <div className="animate-pulse space-y-2">
+            <div className="h-4 bg-muted rounded w-1/2"></div>
+            <div className="h-3 bg-muted rounded w-1/3"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!membership || !membership.isPremium) {
+    return (
+      <Card className="bg-muted/20">
+        <CardContent className="p-4">
+          <div className="flex items-center space-x-2">
+            <div className="w-2 h-2 bg-muted-foreground rounded-full"></div>
+            <span className="text-sm text-muted-foreground">Free Plan</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const isActive = membership.expiresAt ? new Date(membership.expiresAt) > new Date() : false;
+  const daysLeft = membership.expiresAt 
+    ? Math.ceil((new Date(membership.expiresAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
+
+  return (
+    <Card className="bg-gradient-to-r from-primary/10 to-accent/10 border-primary/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center space-x-2 text-lg">
+          <Crown className="h-5 w-5 text-accent" />
+          <span>Premium Member</span>
+          {isActive && <CheckCircle className="h-4 w-4 text-green-500" />}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Status</span>
+            <Badge 
+              variant={isActive ? "default" : "secondary"}
+              className={isActive ? "bg-green-500" : ""}
+            >
+              {isActive ? "Active" : "Expired"}
+            </Badge>
+          </div>
+          
+          {membership.expiresAt && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">
+                <Calendar className="h-3 w-3 inline mr-1" />
+                {isActive ? "Expires in" : "Expired"}
+              </span>
+              <span className="text-sm font-medium">
+                {daysLeft > 0 ? `${daysLeft} days` : "Expired"}
+              </span>
+            </div>
+          )}
+          
+          {membership.amount && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Amount Paid</span>
+              <span className="text-sm font-medium text-accent">
+                {membership.amount}π
+              </span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
