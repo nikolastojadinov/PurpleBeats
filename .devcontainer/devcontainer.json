@@ -1,0 +1,51 @@
+{
+  "name": "PurpleBeats Development",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeGitTagSkipCheckout": true,
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "forwardPorts": [5000, 5432],
+  "portsAttributes": {
+    "5000": {
+      "label": "PurpleBeats App",
+      "onAutoForward": "openPreview"
+    },
+    "5432": {
+      "label": "PostgreSQL Database",
+      "onAutoForward": "ignore"
+    }
+  },
+
+  "onCreateCommand": "npm install && docker-compose -f .devcontainer/docker-compose.yml up -d",
+  "postStartCommand": ".devcontainer/setup.sh",
+  "postCreateCommand": "cp .env.example .env || true",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.vscode-typescript-next",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-json",
+        "ms-vscode-remote.remote-containers"
+      ],
+      "settings": {
+        "typescript.preferences.preferTypeOnlyAutoImports": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll": true
+        }
+      }
+    }
+  },
+
+  "remoteUser": "node"
+}
